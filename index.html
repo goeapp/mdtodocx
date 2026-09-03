@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MDtoDOCX v1.3</title>
+<title>MDtoDOCX/PDF v1.4</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 
@@ -11,6 +11,9 @@
 <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.8/FileSaver.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<!-- pdfmake: trae Roboto embebido via vfs, sin config extra -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
 
 <style>
 /* ── TOKENS ─────────────────────────────────────── */
@@ -120,6 +123,11 @@ button { font-family: inherit; cursor: pointer; }
 }
 .toolbar select:hover,
 .toolbar select:focus { border-color: var(--accent); }
+.toolbar select:disabled {
+  opacity: .45;
+  cursor  : not-allowed;
+}
+.toolbar select:disabled:hover { border-color: var(--border); }
 .toolbar-sep { width: 1px; height: 20px; background: var(--border); }
 
 /* ── MAIN ────────────────────────────────────────── */
@@ -288,14 +296,22 @@ main {
 <body>
 
 <header id="app-header">
-  <span class="hdr-logo">MDtoDOCX</span>
-  <span class="hdr-version">index_mdtodocx_v1.3.html</span>
+  <span class="hdr-logo">MDtoDOCX/PDF</span>
+  <span class="hdr-version">index_mdtodocx_v1.4.html</span>
   <div class="hdr-sep"></div>
   <button class="btn-instalar-pwa" id="btn-install">⬇ Instalar</button>
 </header>
 
 <div class="toolbar">
-  <span class="toolbar-label">Configuración DOCX</span>
+  <span class="toolbar-label">Configuración</span>
+  <div class="ctrl-group">
+    <span class="toolbar-label">Formato</span>
+    <select id="sel-format">
+      <option value="docx" selected>DOCX</option>
+      <option value="pdf">PDF</option>
+    </select>
+  </div>
+  <div class="toolbar-sep"></div>
   <div class="ctrl-group">
     <span class="toolbar-label">Fuente</span>
     <select id="sel-font">
@@ -366,6 +382,14 @@ const statusMsg   = document.getElementById('status-msg');
 const toastEl     = document.getElementById('toast');
 const selFont     = document.getElementById('sel-font');
 const selSize     = document.getElementById('sel-size');
+const selFormat   = document.getElementById('sel-format');
+
+// PDF usa Roboto fijo (embebido vía vfs) — el selector de Fuente no aplica
+selFormat.addEventListener('change', () => {
+  const isPdf = selFormat.value === 'pdf';
+  selFont.disabled = isPdf;
+  selFont.title = isPdf ? 'PDF usa Roboto (fuente embebida, no configurable)' : '';
+});
 
 // ── HELPERS ─────────────────────────────────────────
 function decodeHtmlEntities(str) {
@@ -417,11 +441,14 @@ function handleFile(file) {
 btnConvert.addEventListener('click', async () => {
   if (!currentFile) return;
   btnConvert.disabled = true;
+  const format = selFormat.value; // 'docx' | 'pdf'
   setStatus('Procesando...', 'busy');
   try {
     const mdText = await readFile(currentFile);
-    const blob   = await buildDocx(mdText, currentFile.name);
-    const name   = buildName(currentFile.name);
+    const blob   = format === 'pdf'
+      ? await buildPdf(mdText, currentFile.name)
+      : await buildDocx(mdText, currentFile.name);
+    const name   = buildName(currentFile.name, format);
     saveAs(blob, name);
     setStatus('Descargado: ' + name, 'ok');
     showToast('✓ ' + name);
@@ -443,11 +470,12 @@ function readFile(file) {
   });
 }
 
-function buildName(orig) {
+function buildName(orig, format) {
   const base = orig.replace(/\.md$/i, '');
   const now  = new Date();
   const p    = n => String(n).padStart(2,'0');
-  return `${base}_${now.getFullYear()}${p(now.getMonth()+1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}.docx`;
+  const ext  = format === 'pdf' ? 'pdf' : 'docx';
+  return `${base}_${now.getFullYear()}${p(now.getMonth()+1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}.${ext}`;
 }
 
 // ── BUILD DOCX ───────────────────────────────────────
@@ -618,6 +646,174 @@ function inlineRuns(tokens, font, size) {
     }
   }
   return runs.length ? runs : [new docx.TextRun({ text: '', font, size })];
+}
+
+// ── BUILD PDF ──────────────────────────────────────────
+// pdfmake: docDefinition declarativo, fuente Roboto embebida vía vfs
+async function buildPdf(mdText, fileName) {
+  const sizePt = parseInt(selSize.value); // pdfmake usa puntos directos (no half-points)
+  const cm     = 28.35; // 1cm en puntos
+
+  const tokens = marked.lexer(mdText);
+  const content = [];
+  for (const tok of tokens) {
+    content.push(...tokToPdfContent(tok, sizePt));
+  }
+
+  const fileLabel = fileName.replace(/\.md$/i, '');
+
+  const docDefinition = {
+    pageSize   : 'LETTER',
+    pageMargins: [cm, cm, cm, cm + 14],
+    defaultStyle: { fontSize: sizePt, lineHeight: 1.15 },
+    styles: {
+      h1: { fontSize: sizePt + 12, bold: true, margin: [0, 10, 0, 6] },
+      h2: { fontSize: sizePt + 8,  bold: true, margin: [0, 9, 0, 5] },
+      h3: { fontSize: sizePt + 5,  bold: true, margin: [0, 8, 0, 4] },
+      h4: { fontSize: sizePt + 3,  bold: true, margin: [0, 7, 0, 4] },
+      h5: { fontSize: sizePt + 1,  bold: true, margin: [0, 6, 0, 3] },
+      h6: { fontSize: sizePt,      bold: true, italics: true, margin: [0, 6, 0, 3] },
+    },
+    footer: (currentPage, pageCount) => ({
+      alignment: 'center',
+      fontSize : Math.max(sizePt - 3, 7),
+      color    : '#888888',
+      margin   : [0, 8, 0, 0],
+      text     : `${fileLabel}   ${currentPage} de ${pageCount}`,
+    }),
+    content,
+  };
+
+  return new Promise((resolve, reject) => {
+    try {
+      pdfMake.createPdf(docDefinition).getBlob(resolve);
+    } catch (err) { reject(err); }
+  });
+}
+
+// ── TOKEN → PDF ───────────────────────────────────────
+function tokToPdfContent(tok, sizePt) {
+  switch (tok.type) {
+
+    case 'heading': {
+      const styleKey = 'h' + Math.min(Math.max(tok.depth, 1), 6);
+      return [{
+        text : inlinePdfText(tok.tokens || [], sizePt),
+        style: styleKey,
+      }];
+    }
+
+    case 'paragraph':
+      return [{
+        text  : inlinePdfText(tok.tokens || [], sizePt),
+        margin: [0, 0, 0, 8],
+      }];
+
+    case 'list': {
+      const items = tok.items.map(item => {
+        const inline = item.tokens && item.tokens[0] && item.tokens[0].tokens
+          ? item.tokens[0].tokens : [];
+        return { text: inlinePdfText(inline, sizePt), margin: [0, 0, 0, 3] };
+      });
+      return [{ ul: items, margin: [0, 0, 0, 6] }];
+    }
+
+    case 'code': {
+      const code = decodeHtmlEntities(tok.text);
+      return [{
+        table : {
+          widths: [3, '*'],
+          body  : [[
+            { text: '', fillColor: '#cccccc', border: [false, false, false, false] },
+            {
+              text            : code,
+              preserveLeadingSpaces: true,
+              fontSize        : Math.max(sizePt - 2, 7),
+              fillColor       : '#f8fafc',
+              margin          : [8, 6, 6, 6],
+              border          : [false, false, false, false],
+            },
+          ]],
+        },
+        layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+        margin: [0, 4, 0, 8],
+      }];
+    }
+
+    case 'table': {
+      const widths = tok.header.map(() => '*');
+      const body   = [];
+      body.push(tok.header.map(cell => ({
+        text     : decodeHtmlEntities(cell.text),
+        bold     : true,
+        fontSize : sizePt,
+        fillColor: '#f1f5f9',
+      })));
+      tok.rows.forEach(row => {
+        body.push(row.map(cell => ({
+          text: inlinePdfText(cell.tokens || [], sizePt),
+        })));
+      });
+      return [
+        { table: { headerRows: 1, widths, body }, layout: 'lightHorizontalLines', margin: [0, 4, 0, 8] },
+      ];
+    }
+
+    case 'hr':
+      return [{
+        canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#e2e8f0' }],
+        margin: [0, 10, 0, 10],
+      }];
+
+    case 'blockquote': {
+      const inner = [];
+      for (const t of (tok.tokens || [])) inner.push(...tokToPdfContent(t, sizePt));
+      return inner.map(block => ({ ...block, margin: [10, block.margin ? block.margin[1] : 2, 0, block.margin ? block.margin[3] : 2], italics: true }));
+    }
+
+    case 'space':
+      return [{ text: '', margin: [0, 4, 0, 4] }];
+
+    default:
+      return [];
+  }
+}
+
+// ── INLINE TEXT → PDF ────────────────────────────────
+function inlinePdfText(tokens, sizePt) {
+  const runs = [];
+  for (const t of tokens) {
+    switch (t.type) {
+      case 'text':
+      case 'escape':
+        runs.push({ text: decodeHtmlEntities(t.text || t.raw || '') });
+        break;
+      case 'strong':
+        (t.tokens || []).forEach(s =>
+          runs.push({ text: decodeHtmlEntities(s.text || s.raw || ''), bold: true })
+        );
+        break;
+      case 'em':
+        (t.tokens || []).forEach(s =>
+          runs.push({ text: decodeHtmlEntities(s.text || s.raw || ''), italics: true })
+        );
+        break;
+      case 'del':
+        (t.tokens || []).forEach(s =>
+          runs.push({ text: decodeHtmlEntities(s.text || s.raw || ''), decoration: 'lineThrough' })
+        );
+        break;
+      case 'codespan':
+        runs.push({ text: decodeHtmlEntities(t.text || ''), fontSize: Math.max(sizePt - 1, 7), background: '#f1f5f9', color: '#b45309' });
+        break;
+      case 'link':
+        runs.push({ text: decodeHtmlEntities(t.text || t.href || ''), color: '#1d4ed8', decoration: 'underline', link: t.href || undefined });
+        break;
+      default:
+        if (t.raw) runs.push({ text: decodeHtmlEntities(t.raw) });
+    }
+  }
+  return runs.length ? runs : [{ text: '' }];
 }
 
 // ── PWA ──────────────────────────────────────────────
