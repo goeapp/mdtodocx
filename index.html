@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MDtoDOCX/PDF v1.4</title>
+<title>MDtoDOCX/PDF v1.5</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 
@@ -32,6 +32,7 @@
   --shadow    : 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
   --shadow-md : 0 4px 12px rgba(0,0,0,.10);
   --header-h  : 52px;
+  --toc-w     : 260px;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -44,6 +45,8 @@ body {
   flex-direction: column;
   min-height    : 100vh;
 }
+/* v1.5 — en modo visor la página no scrollea: scrollean índice y documento por separado */
+body.viewing { height: 100vh; overflow: hidden; }
 button { font-family: inherit; cursor: pointer; }
 
 /* ── HEADER ─────────────────────────────────────── */
@@ -95,6 +98,7 @@ button { font-family: inherit; cursor: pointer; }
   align-items  : center;
   gap          : 16px;
   flex-wrap    : wrap;
+  flex-shrink  : 0;
 }
 .toolbar-label {
   font-size     : .67rem;
@@ -130,7 +134,7 @@ button { font-family: inherit; cursor: pointer; }
 .toolbar select:disabled:hover { border-color: var(--border); }
 .toolbar-sep { width: 1px; height: 20px; background: var(--border); }
 
-/* ── MAIN ────────────────────────────────────────── */
+/* ── MAIN (pantalla inicial de carga) ────────────── */
 main {
   flex           : 1;
   display        : flex;
@@ -138,6 +142,7 @@ main {
   justify-content: center;
   padding        : 40px 20px;
 }
+body.viewing main { display: none; }
 .workspace {
   width         : 100%;
   max-width     : 560px;
@@ -178,7 +183,6 @@ main {
 }
 .drop-zone:hover,
 .drop-zone.drag-over { background: #fef9f0; }
-.drop-zone.has-file  { background: #f0fdf4; cursor: default; }
 
 .drop-icon    { font-size: 36px; margin-bottom: 12px; display: block; }
 .drop-title   { font-size: .95rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
@@ -195,54 +199,224 @@ main {
   transition   : all .15s;
 }
 .btn-select:hover { border-color: var(--accent); color: var(--accent); }
-
-.drop-hint-change {
-  display   : none;
-  font-size : .75rem;
+.btn-demo {
+  display   : block;
+  margin    : 14px auto 0;
+  background: none;
+  border    : none;
   color     : var(--muted);
-  margin-top: 12px;
+  font-size : .74rem;
+  text-decoration: underline;
 }
-.drop-zone.has-file .drop-hint-change { display: block; }
-.drop-zone.has-file .drop-action      { display: none; }
-
-.file-badge {
-  display      : none;
-  align-items  : center;
-  gap          : 8px;
-  background   : #dcfce7;
-  border       : 1px solid #bbf7d0;
-  border-radius: var(--radius-sm);
-  padding      : 8px 14px;
-  margin-top   : 14px;
-  font-size    : .8rem;
-  font-weight  : 500;
-  color        : #15803d;
-  word-break   : break-all;
-}
-.drop-zone.has-file .file-badge { display: inline-flex; }
+.btn-demo:hover { color: var(--accent); }
 #file-input { display: none; }
 
-/* ── BTN CONVERTIR ───────────────────────────────── */
-.btn-convert {
-  width         : 100%;
-  background    : var(--accent);
-  color         : #fff;
-  border        : none;
+/* ── v1.5 VISOR ──────────────────────────────────── */
+#viewer {
+  display       : none;
+  flex          : 1;
+  min-height    : 0;
+  flex-direction: column;
+}
+body.viewing #viewer { display: flex; }
+
+.file-bar {
+  background   : var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding      : 8px 20px;
+  display      : flex;
+  align-items  : center;
+  gap          : 10px;
+  flex-shrink  : 0;
+}
+.btn-toc {
+  background   : var(--bg);
+  border       : 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width        : 34px;
+  height       : 32px;
+  font-size    : 1rem;
+  color        : var(--text);
+  transition   : all .15s;
+}
+.btn-toc:hover { border-color: var(--accent); color: var(--accent); }
+.btn-toc.active { background: #fef3c7; border-color: var(--accent); color: var(--accent); }
+.fb-name {
+  font-size    : .82rem;
+  font-weight  : 600;
+  color        : var(--text);
+  overflow     : hidden;
+  text-overflow: ellipsis;
+  white-space  : nowrap;
+  min-width    : 0;
+}
+.fb-size { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.fb-sep  { flex: 1; }
+.btn-ghost {
+  background   : var(--bg);
+  border       : 1px solid var(--border);
+  color        : var(--text);
+  border-radius: var(--radius-sm);
+  padding      : 6px 14px;
+  font-size    : .78rem;
+  font-weight  : 500;
+  white-space  : nowrap;
+  transition   : all .15s;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn-convert-sm {
+  background   : var(--accent);
+  color        : #fff;
+  border       : none;
+  border-radius: var(--radius-sm);
+  padding      : 7px 16px;
+  font-size    : .8rem;
+  font-weight  : 600;
+  white-space  : nowrap;
+  transition   : background .15s;
+}
+.btn-convert-sm:hover:not(:disabled) { background: #b45309; }
+.btn-convert-sm:disabled { opacity: .5; cursor: not-allowed; }
+
+.viewer-body {
+  flex      : 1;
+  min-height: 0;
+  display   : flex;
+  position  : relative;
+}
+body.drag-over .viewer-body::after {
+  content       : 'Soltá el .md para abrirlo';
+  position      : absolute;
+  inset         : 12px;
+  border        : 2px dashed var(--accent);
   border-radius : var(--radius);
-  padding       : 14px;
-  font-size     : .95rem;
+  background    : rgba(254,249,240,.92);
+  display       : flex;
+  align-items   : center;
+  justify-content: center;
   font-weight   : 600;
-  letter-spacing: .02em;
-  transition    : background .15s, transform .1s;
+  color         : var(--accent);
+  z-index       : 20;
+  pointer-events: none;
 }
-.btn-convert:not(:disabled):hover  { background: #b45309; transform: translateY(-1px); }
-.btn-convert:not(:disabled):active { transform: translateY(0); }
-.btn-convert:disabled {
-  background: var(--bg);
-  color     : #cbd5e1;
-  border    : 1px solid var(--border);
-  cursor    : not-allowed;
+
+/* Índice */
+#toc {
+  width       : var(--toc-w);
+  flex-shrink : 0;
+  background  : var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y  : auto;
+  padding     : 14px 0;
 }
+body.toc-hidden #toc { display: none; }
+.toc-title {
+  font-size     : .67rem;
+  font-weight   : 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color         : var(--muted);
+  padding       : 0 16px 8px;
+}
+.toc-empty { padding: 0 16px; font-size: .78rem; color: var(--muted); }
+.toc-item {
+  display      : block;
+  width        : 100%;
+  text-align   : left;
+  background   : none;
+  border       : none;
+  border-left  : 3px solid transparent;
+  padding      : 6px 16px;
+  font-size    : .8rem;
+  color        : var(--text);
+  line-height  : 1.35;
+  transition   : background .12s, color .12s;
+}
+.toc-item.lv2 { padding-left: 30px; color: var(--muted); font-size: .78rem; }
+.toc-item:hover { background: var(--bg); color: var(--accent); }
+.toc-item.active {
+  border-left-color: var(--accent);
+  background       : #fef9f0;
+  color            : var(--accent);
+  font-weight      : 600;
+}
+
+/* Documento */
+#doc-wrap {
+  flex      : 1;
+  min-width : 0;
+  overflow-y: auto;
+  padding   : 28px 20px 60px;
+  scroll-behavior: smooth;
+}
+/* Recorrido extra al final: permite que las últimas secciones suban al tope al saltar desde el índice */
+#doc-wrap::after { content: ''; display: block; height: 55vh; }
+.md-page {
+  max-width    : 860px;
+  margin       : 0 auto;
+  background   : var(--surface);
+  border       : 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow   : var(--shadow);
+  padding      : 40px 48px;
+}
+
+/* ── v1.5 ESTILO DE LECTURA MARKDOWN ─────────────── */
+.md-body { font-size: 15px; line-height: 1.65; color: var(--text); word-wrap: break-word; }
+.md-body > *:first-child { margin-top: 0; }
+.md-body h1, .md-body h2, .md-body h3,
+.md-body h4, .md-body h5, .md-body h6 {
+  font-weight: 600; line-height: 1.3; margin: 1.5em 0 .6em; color: var(--accent2);
+  scroll-margin-top: 16px;
+}
+.md-body h1 { font-size: 1.9em; padding-bottom: .3em; border-bottom: 2px solid var(--accent); }
+.md-body h2 { font-size: 1.45em; padding-bottom: .25em; border-bottom: 1px solid var(--border); }
+.md-body h3 { font-size: 1.2em; }
+.md-body h4 { font-size: 1.05em; }
+.md-body h5 { font-size: .95em; }
+.md-body h6 { font-size: .9em; color: var(--muted); }
+.md-body p  { margin: 0 0 1em; }
+.md-body a  { color: #1d4ed8; text-decoration: underline; text-underline-offset: 2px; }
+.md-body strong { font-weight: 600; }
+.md-body ul, .md-body ol { margin: 0 0 1em; padding-left: 1.6em; }
+.md-body li { margin: .25em 0; }
+.md-body li > ul, .md-body li > ol { margin: .2em 0; }
+.md-body input[type=checkbox] { margin-right: 6px; accent-color: var(--accent); }
+.md-body li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em; }
+.md-body code {
+  font-family  : Consolas, 'Courier New', monospace;
+  font-size    : .87em;
+  background   : #f1f5f9;
+  color        : #b45309;
+  padding      : .12em .4em;
+  border-radius: 4px;
+}
+.md-body pre {
+  background   : #f8fafc;
+  border       : 1px solid var(--border);
+  border-left  : 3px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  padding      : 12px 16px;
+  margin       : 0 0 1em;
+  overflow-x   : auto;
+}
+.md-body pre code { background: none; color: var(--text); padding: 0; font-size: .85em; line-height: 1.5; }
+.md-body blockquote {
+  margin       : 0 0 1em;
+  padding      : 8px 16px;
+  border-left  : 4px solid var(--accent);
+  background   : #fef9f0;
+  color        : #475569;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.md-body blockquote > :last-child { margin-bottom: 0; }
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: 1.6em 0; }
+.md-body .tbl-wrap { overflow-x: auto; margin: 0 0 1em; }
+.md-body table { border-collapse: collapse; width: 100%; font-size: .9em; }
+.md-body th, .md-body td { border: 1px solid var(--border); padding: 7px 11px; text-align: left; vertical-align: top; }
+.md-body th { background: #f1f5f9; font-weight: 600; }
+.md-body tr:nth-child(even) td { background: #fafbfc; }
+.md-body img { max-width: 100%; }
 
 /* ── STATUS BAR ──────────────────────────────────── */
 .status-bar {
@@ -291,13 +465,39 @@ main {
   white-space   : nowrap;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── RESPONSIVE ──────────────────────────────────── */
+@media (max-width: 820px) {
+  #toc {
+    position  : absolute;
+    top: 0; bottom: 0; left: 0;
+    z-index   : 10;
+    box-shadow: var(--shadow-md);
+  }
+  .md-page { padding: 24px 20px; }
+  #doc-wrap { padding: 16px 12px 40px; }
+  .fb-size { display: none; }
+}
+@media (max-width: 520px) {
+  .file-bar { padding: 8px 12px; gap: 6px; }
+  .btn-ghost { padding: 6px 10px; }
+}
+
+/* ── IMPRESIÓN: solo el documento ────────────────── */
+@media print {
+  #app-header, .toolbar, .file-bar, #toc, .status-bar, .toast { display: none !important; }
+  body.viewing { height: auto; overflow: visible; }
+  #doc-wrap { overflow: visible; padding: 0; }
+  #doc-wrap::after { display: none; }
+  .md-page { border: none; box-shadow: none; padding: 0; max-width: none; }
+}
 </style>
 </head>
 <body>
 
 <header id="app-header">
   <span class="hdr-logo">MDtoDOCX/PDF</span>
-  <span class="hdr-version">index_mdtodocx_v1.4.html</span>
+  <span class="hdr-version">index_mdtodocx_v1.5.html</span>
   <div class="hdr-sep"></div>
   <button class="btn-instalar-pwa" id="btn-install">⬇ Instalar</button>
 </header>
@@ -333,6 +533,7 @@ main {
   </div>
 </div>
 
+<!-- Pantalla inicial: carga de archivo -->
 <main>
   <div class="workspace">
     <div class="card">
@@ -341,22 +542,37 @@ main {
       </div>
       <div class="drop-zone" id="drop-zone">
         <span class="drop-icon">📄</span>
-        <div class="drop-action">
-          <div class="drop-title">Soltá tu archivo .md acá</div>
-          <div class="drop-sub">o usá el selector</div>
-          <button class="btn-select" id="btn-select">Seleccionar archivo</button>
-        </div>
-        <div class="file-badge" id="file-badge">
-          <span>✓</span>
-          <span id="file-name-label">—</span>
-        </div>
-        <div class="drop-hint-change">Hacé click para cambiar el archivo</div>
-        <input type="file" id="file-input" accept=".md,text/markdown,text/plain" />
+        <div class="drop-title">Soltá tu archivo .md acá</div>
+        <div class="drop-sub">Se abre para leerlo; convertís cuando quieras</div>
+        <button class="btn-select" id="btn-select">Seleccionar archivo</button>
+        <button class="btn-demo" id="btn-demo">Ver un ejemplo</button>
       </div>
     </div>
-    <button class="btn-convert" id="btn-convert" disabled>Convertir y Descargar</button>
   </div>
 </main>
+
+<!-- v1.5 Visor -->
+<section id="viewer">
+  <div class="file-bar">
+    <button class="btn-toc" id="btn-toc" title="Mostrar / ocultar índice">☰</button>
+    <span class="fb-name" id="fb-name">—</span>
+    <span class="fb-size" id="fb-size"></span>
+    <div class="fb-sep"></div>
+    <button class="btn-ghost" id="btn-change">Cambiar</button>
+    <button class="btn-convert-sm" id="btn-convert">Convertir y Descargar</button>
+  </div>
+  <div class="viewer-body">
+    <nav id="toc">
+      <div class="toc-title">Índice</div>
+      <div id="toc-list"></div>
+    </nav>
+    <div id="doc-wrap">
+      <article class="md-page md-body" id="doc"></article>
+    </div>
+  </div>
+</section>
+
+<input type="file" id="file-input" accept=".md,text/markdown,text/plain" />
 
 <div class="status-bar">
   <div class="status-dot" id="status-dot"></div>
@@ -366,17 +582,83 @@ main {
 <div class="toast" id="toast"></div>
 
 <script>
+// ── DATOS DE PRUEBA (hardcodeados, botón "Ver un ejemplo") ──
+const DEMO_NAME = 'ejemplo_handoff_v1_5.md';
+const DEMO_MD = `# Handoff — Proyecto Ejemplo v2.3
+**Fecha:** 2026-10-15
+**Archivo entregado:** \`index_ejemplo_v2.3.html\`
+**Estado:** ✅ Funcional
+
+---
+
+## Qué se hizo en esta sesión
+
+Se agregó el **visor de Markdown** con índice lateral. El archivo se ve *formateado* apenas se carga, y la conversión queda a un clic.
+
+> Nota: este documento es de prueba y viene embebido en el HTML.
+
+## Decisiones de diseño
+
+| Decisión | Resultado |
+|---|---|
+| Integración | Mismo archivo, sin librerías nuevas |
+| Índice | Títulos \`#\` y \`##\`, panel ocultable con ☰ |
+| Preferencia | Se recuerda en el navegador |
+
+### Detalle técnico
+
+El render usa \`marked.parse()\` y el índice se arma recorriendo los títulos:
+
+\`\`\`js
+doc.querySelectorAll('h1, h2').forEach(h => {
+  // agrega entrada al índice
+});
+\`\`\`
+
+## Mapeo de tokens
+
+1. Encabezados con ancla
+2. Tablas con scroll horizontal
+3. Bloques de código con barra lateral
+
+- Viñeta simple
+  - Sub-viñeta
+- Link de referencia: [marked.js](https://marked.js.org)
+
+## Pendientes
+
+- [x] Visor con índice
+- [ ] Imágenes embebidas
+- [ ] Listas numeradas en DOCX
+
+## Para retomar
+
+1. Abrir \`index_ejemplo_v2.3.html\`
+2. Conversar diseño antes de codear
+`;
+
 // ── ESTADO ──────────────────────────────────────────
-let currentFile    = null;
+let currentFile    = null;   // { name, size }
+let currentMd      = '';     // texto del .md cargado
 let deferredPrompt = null;
+let tocObserver    = null;
+let lockUntil      = 0;      // pausa del resaltado automático tras clic en el índice
+const LS_TOC_KEY   = 'mdtodocx_toc_hidden';
 
 // ── ELEMENTOS ───────────────────────────────────────
 const dropZone    = document.getElementById('drop-zone');
 const fileInput   = document.getElementById('file-input');
 const btnSelect   = document.getElementById('btn-select');
+const btnDemo     = document.getElementById('btn-demo');
 const btnConvert  = document.getElementById('btn-convert');
+const btnChange   = document.getElementById('btn-change');
+const btnToc      = document.getElementById('btn-toc');
 const btnInstall  = document.getElementById('btn-install');
-const fileNameLbl = document.getElementById('file-name-label');
+const fbName      = document.getElementById('fb-name');
+const fbSize      = document.getElementById('fb-size');
+const docEl       = document.getElementById('doc');
+const docWrap     = document.getElementById('doc-wrap');
+const tocList     = document.getElementById('toc-list');
 const statusDot   = document.getElementById('status-dot');
 const statusMsg   = document.getElementById('status-msg');
 const toastEl     = document.getElementById('toast');
@@ -412,30 +694,172 @@ function showToast(msg, ms = 3000) {
 function fmtBytes(b) {
   return b < 1024 ? b + ' B' : (b / 1024).toFixed(1) + ' KB';
 }
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin storage */ } }
 
 // ── DROP / SELECT ────────────────────────────────────
 btnSelect.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+btnDemo.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openMarkdown({ name: DEMO_NAME, size: new Blob([DEMO_MD]).size }, DEMO_MD);
+});
+btnChange.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', (e) => {
-  e.preventDefault(); dropZone.classList.remove('drag-over');
+  e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over');
   if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 });
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  fileInput.value = ''; // permite reabrir el mismo archivo
+});
 
-function handleFile(file) {
+// v1.5 — en modo visor se puede soltar otro .md encima del documento
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => {
+  if (!document.body.classList.contains('viewing')) return;
+  e.preventDefault(); dragDepth++; document.body.classList.add('drag-over');
+});
+window.addEventListener('dragleave', () => {
+  if (!document.body.classList.contains('viewing')) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) document.body.classList.remove('drag-over');
+});
+window.addEventListener('dragover', (e) => { e.preventDefault(); });
+window.addEventListener('drop', (e) => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove('drag-over');
+  if (document.body.classList.contains('viewing') && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+async function handleFile(file) {
   if (!file.name.toLowerCase().endsWith('.md')) {
     setStatus('Solo se aceptan archivos .md', 'err');
     showToast('⚠ Archivo no válido');
     return;
   }
-  currentFile = file;
-  fileNameLbl.textContent = file.name + '  (' + fmtBytes(file.size) + ')';
-  dropZone.classList.add('has-file');
-  btnConvert.disabled = false;
-  setStatus('Archivo listo: ' + file.name, 'ok');
+  try {
+    const text = await readFile(file);
+    openMarkdown({ name: file.name, size: file.size }, text);
+  } catch (err) {
+    console.error(err);
+    setStatus('Error: ' + err.message, 'err');
+  }
 }
+
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = e => res(e.target.result);
+    r.onerror = () => rej(new Error('No se pudo leer el archivo'));
+    r.readAsText(file, 'UTF-8');
+  });
+}
+
+// ── v1.5 VISOR ───────────────────────────────────────
+function openMarkdown(fileInfo, mdText) {
+  currentFile = fileInfo;
+  currentMd   = mdText;
+  fbName.textContent = fileInfo.name;
+  fbName.title       = fileInfo.name;
+  fbSize.textContent = '(' + fmtBytes(fileInfo.size) + ')';
+  document.title     = fileInfo.name + ' — MDtoDOCX/PDF v1.5';
+
+  renderDoc(mdText);
+  document.body.classList.add('viewing');
+  applyTocState();
+  docWrap.scrollTop = 0;
+  setStatus('Viendo: ' + fileInfo.name + ' — convertí cuando quieras', 'ok');
+}
+
+function renderDoc(mdText) {
+  docEl.innerHTML = marked.parse(mdText, { gfm: true });
+
+  // Links externos en pestaña nueva
+  docEl.querySelectorAll('a[href]').forEach(a => {
+    if (!a.getAttribute('href').startsWith('#')) { a.target = '_blank'; a.rel = 'noopener'; }
+  });
+  // Tablas envueltas para scroll horizontal
+  docEl.querySelectorAll('table').forEach(t => {
+    const w = document.createElement('div');
+    w.className = 'tbl-wrap';
+    t.parentNode.insertBefore(w, t);
+    w.appendChild(t);
+  });
+  // IDs únicos en todos los títulos (anclas)
+  const used = {};
+  docEl.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+    let base = slugify(h.textContent) || 'seccion';
+    let id = base, n = 2;
+    while (used[id]) id = base + '-' + n++;
+    used[id] = true;
+    h.id = id;
+  });
+  buildToc();
+}
+
+function slugify(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+}
+
+function buildToc() {
+  tocList.innerHTML = '';
+  if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+  const heads = [...docEl.querySelectorAll('h1, h2')];
+  if (!heads.length) {
+    tocList.innerHTML = '<div class="toc-empty">El documento no tiene títulos # o ##.</div>';
+    return;
+  }
+  const items = {};
+  heads.forEach(h => {
+    const b = document.createElement('button');
+    b.className = 'toc-item lv' + h.tagName.slice(1);
+    b.textContent = h.textContent;
+    b.title = h.textContent;
+    b.addEventListener('click', () => {
+      // Durante el scroll suave el observer no pisa la selección hecha con clic
+      lockUntil = Date.now() + 900;
+      h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActive(h.id);
+      if (window.matchMedia('(max-width: 820px)').matches) setTocHidden(true);
+    });
+    tocList.appendChild(b);
+    items[h.id] = b;
+  });
+
+  function setActive(id) {
+    Object.values(items).forEach(el => el.classList.remove('active'));
+    if (items[id]) items[id].classList.add('active');
+  }
+  // Resalta la sección visible al scrollear
+  tocObserver = new IntersectionObserver((entries) => {
+    if (Date.now() < lockUntil) return;
+    const vis = entries.filter(e => e.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (vis.length) setActive(vis[0].target.id);
+  }, { root: docWrap, rootMargin: '0px 0px -70% 0px', threshold: 0 });
+  heads.forEach(h => tocObserver.observe(h));
+  setActive(heads[0].id);
+}
+
+// ── v1.5 ÍNDICE: mostrar / ocultar (se recuerda) ─────
+function setTocHidden(hidden, persist = true) {
+  document.body.classList.toggle('toc-hidden', hidden);
+  btnToc.classList.toggle('active', !hidden);
+  if (persist) lsSet(LS_TOC_KEY, hidden ? '1' : '0');
+}
+function applyTocState() {
+  const saved = lsGet(LS_TOC_KEY);
+  const narrow = window.matchMedia('(max-width: 820px)').matches;
+  // En pantalla angosta arranca oculto (se superpone al documento)
+  setTocHidden(narrow ? true : saved === '1', false);
+}
+btnToc.addEventListener('click', () => {
+  const narrow = window.matchMedia('(max-width: 820px)').matches;
+  setTocHidden(!document.body.classList.contains('toc-hidden'), !narrow);
+});
 
 // ── CONVERTIR ────────────────────────────────────────
 btnConvert.addEventListener('click', async () => {
@@ -444,10 +868,9 @@ btnConvert.addEventListener('click', async () => {
   const format = selFormat.value; // 'docx' | 'pdf'
   setStatus('Procesando...', 'busy');
   try {
-    const mdText = await readFile(currentFile);
     const blob   = format === 'pdf'
-      ? await buildPdf(mdText, currentFile.name)
-      : await buildDocx(mdText, currentFile.name);
+      ? await buildPdf(currentMd, currentFile.name)
+      : await buildDocx(currentMd, currentFile.name);
     const name   = buildName(currentFile.name, format);
     saveAs(blob, name);
     setStatus('Descargado: ' + name, 'ok');
@@ -460,15 +883,6 @@ btnConvert.addEventListener('click', async () => {
     btnConvert.disabled = false;
   }
 });
-
-function readFile(file) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload  = e => res(e.target.result);
-    r.onerror = () => rej(new Error('No se pudo leer el archivo'));
-    r.readAsText(file, 'UTF-8');
-  });
-}
 
 function buildName(orig, format) {
   const base = orig.replace(/\.md$/i, '');
